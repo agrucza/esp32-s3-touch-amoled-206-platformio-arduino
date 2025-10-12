@@ -38,7 +38,7 @@
     "arduino",
     "espidf"
   ],
-  "name": "Waveshare ESP32-S3-Touch-AMOLED (32MB Flash + 8MB PSRAM)",
+  "name": "Waveshare ESP32-S3-Touch-AMOLED-2.06 (32MB Flash + 8MB PSRAM)",
   "upload": {
     "flash_size": "32MB",
     "maximum_ram_size": 327680,
@@ -47,5 +47,5 @@
     "speed": 460800
   },
   "url": "https://github.com/agrucza/esp32-s3-touch-amoled-206-platformio-arduino",
-  "vendor": "Custom"
+  "vendor": "Waveshare"
 }
