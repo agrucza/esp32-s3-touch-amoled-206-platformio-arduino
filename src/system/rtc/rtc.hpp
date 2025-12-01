@@ -35,6 +35,8 @@ private:
     
     uint8_t interrupt_pin = RTC_INT;
     volatile bool alarm_triggered = false;
+    volatile bool timer_triggered = false;
+    volatile bool minute_triggered = false;
     
     // Helper functions
     uint8_t bcdToDec(uint8_t val) { return (val / 16 * 10) + (val % 16); }
@@ -73,4 +75,37 @@ public:
     bool clearAlarm();
     bool isAlarmTriggered() { return alarm_triggered; }
     void clearAlarmFlag() { alarm_triggered = false; }
+    
+    // Timer functions (countdown timer)
+    enum TimerClockFreq : uint8_t {
+        TIMER_4096HZ = 0,   // 244 µs per tick
+        TIMER_64HZ = 1,     // 15.625 ms per tick  
+        TIMER_1HZ = 2,      // 1 second per tick
+        TIMER_1_60HZ = 3    // 1 minute per tick
+    };
+    
+    bool setTimer(uint8_t value, TimerClockFreq freq);
+    bool clearTimer();
+    bool isTimerTriggered() { return timer_triggered; }
+    void clearTimerFlag() { timer_triggered = false; }
+    
+    // Periodic minute/second interrupts
+    bool enableMinuteInterrupt();
+    bool disableMinuteInterrupt();
+    bool isMinuteTriggered() { return minute_triggered; }
+    void clearMinuteFlag() { minute_triggered = false; }
+    
+    // Clock output (CLKOUT pin)
+    enum ClockOutFreq : uint8_t {
+        CLKOUT_32768HZ = 0,
+        CLKOUT_16384HZ = 1,
+        CLKOUT_8192HZ = 2,
+        CLKOUT_4096HZ = 3,
+        CLKOUT_2048HZ = 4,
+        CLKOUT_1024HZ = 5,
+        CLKOUT_1HZ = 6,
+        CLKOUT_OFF = 7
+    };
+    
+    bool setClockOut(ClockOutFreq freq);
 };

@@ -106,6 +106,26 @@ void SystemManager::update() {
 
     touchController.handleInterrupt();
     
+    // Check IMU for wrist gestures (has its own rate limiting)
+    // Check for wrist tilt UP to wake display
+    if (imu.checkWristTilt()) {
+        if (sleeping) {
+            logger->info("IMU", "⌚ Wrist raise - waking display!");
+            display.powerOn();
+            sleeping = false;
+        }
+
+        last_activity_time = millis();
+    }
+    
+    // Check for wrist tilt DOWN to sleep
+    if (imu.checkWristTiltDown()) {
+        if (!sleeping) {
+            logger->info("IMU", "⌚ Wrist lowered - entering sleep");
+            sleep();
+        }
+    }
+    
     // Check RTC alarm
     if (rtc.isAlarmTriggered()) {
         logger->info("RTC", "⏰ ALARM TRIGGERED!");
@@ -146,7 +166,7 @@ void SystemManager::sleep() {
 
     sleeping = true;
     esp_sleep_enable_ext0_wakeup((gpio_num_t)BTN_BOOT, 0); // Wakeup on LOW
-    esp_sleep_enable_timer_wakeup(5000000); // Wakeup after 5 seconds (microseconds)
+    esp_sleep_enable_timer_wakeup(1000000); // Wakeup after 1 second (microseconds)
     esp_light_sleep_start();
 
     // After light sleep: reinitialize display
@@ -161,6 +181,7 @@ void SystemManager::wakeup() {
         logger->info("SYSTEM", "Woke up by button press");
         display.powerOn();
         sleeping = false;
+        last_activity_time = millis();  // Reset idle timer!
     }
 }
 

@@ -36,7 +36,7 @@
 // IMU pins (I2C interface - QMI8658)
 #define IMU_SDA         I2C_SDA // Shared I2C bus
 #define IMU_SCL         I2C_SCL // Shared I2C bus
-#define IMU_INT1        21      // IMU interrupt 1
+#define IMU_INT2        21      // IMU interrupt 2 (data ready)
 
 // RTC pins (I2C interface - PCF85063)
 #define RTC_SDA         I2C_SDA // Shared I2C bus

@@ -28,7 +28,11 @@ bool RTC::setBus(TwoWire &bus) {
 void IRAM_ATTR RTC::isrArg(void* arg) {
     RTC* self = static_cast<RTC*>(arg);
     if (self) {
-        self->alarm_triggered = true;
+        // Check which interrupt fired by reading CONTROL_2
+        // We'll set flags and check them in main loop
+        self->alarm_triggered = true;  // Could be alarm, timer, or minute
+        self->timer_triggered = true;
+        self->minute_triggered = true;
     }
 }
 
@@ -175,6 +179,102 @@ bool RTC::clearAlarm() {
     alarm_triggered = false;
     
     if (logger) logger->info("RTC", "Alarm cleared");
+    
+    return true;
+}
+
+bool RTC::setTimer(uint8_t value, TimerClockFreq freq) {
+    if (!initialized) return false;
+    
+    // PCF85063 uses OFFSET register as timer countdown
+    if (!writeRegister(REG_OFFSET, value)) return false;
+    
+    // Enable timer interrupt in CONTROL_1
+    // Bits [2:0] = timer frequency
+    uint8_t ctrl1 = freq & 0x03;
+    ctrl1 |= 0x04;  // Enable timer
+    if (!writeRegister(REG_CONTROL_1, ctrl1)) return false;
+    
+    // Enable timer interrupt in CONTROL_2 (bit 4 = TIE)
+    uint8_t ctrl2 = 0;
+    if (!readRegister(REG_CONTROL_2, &ctrl2)) return false;
+    ctrl2 |= 0x10;  // Set TIE bit
+    if (!writeRegister(REG_CONTROL_2, ctrl2)) return false;
+    
+    if (logger) {
+        const char* freq_str[] = {"4096Hz", "64Hz", "1Hz", "1/60Hz"};
+        logger->info("RTC", (String("Timer set: ") + String(value) + " ticks @ " + freq_str[freq]).c_str());
+    }
+    
+    return true;
+}
+
+bool RTC::clearTimer() {
+    if (!initialized) return false;
+    
+    // Disable timer in CONTROL_1
+    uint8_t ctrl1 = 0;
+    if (!readRegister(REG_CONTROL_1, &ctrl1)) return false;
+    ctrl1 &= ~0x04;  // Clear timer enable
+    if (!writeRegister(REG_CONTROL_1, ctrl1)) return false;
+    
+    // Disable timer interrupt in CONTROL_2
+    uint8_t ctrl2 = 0;
+    if (!readRegister(REG_CONTROL_2, &ctrl2)) return false;
+    ctrl2 &= ~0x10;  // Clear TIE bit
+    ctrl2 &= ~0x08;  // Clear TF (timer flag)
+    if (!writeRegister(REG_CONTROL_2, ctrl2)) return false;
+    
+    timer_triggered = false;
+    
+    if (logger) logger->info("RTC", "Timer cleared");
+    
+    return true;
+}
+
+bool RTC::enableMinuteInterrupt() {
+    if (!initialized) return false;
+    
+    // Enable minute interrupt in CONTROL_2 (bit 0 = MI)
+    uint8_t ctrl2 = 0;
+    if (!readRegister(REG_CONTROL_2, &ctrl2)) return false;
+    ctrl2 |= 0x01;  // Set MI bit
+    if (!writeRegister(REG_CONTROL_2, ctrl2)) return false;
+    
+    if (logger) logger->info("RTC", "Minute interrupt enabled");
+    
+    return true;
+}
+
+bool RTC::disableMinuteInterrupt() {
+    if (!initialized) return false;
+    
+    // Disable minute interrupt in CONTROL_2
+    uint8_t ctrl2 = 0;
+    if (!readRegister(REG_CONTROL_2, &ctrl2)) return false;
+    ctrl2 &= ~0x01;  // Clear MI bit
+    if (!writeRegister(REG_CONTROL_2, ctrl2)) return false;
+    
+    minute_triggered = false;
+    
+    if (logger) logger->info("RTC", "Minute interrupt disabled");
+    
+    return true;
+}
+
+bool RTC::setClockOut(ClockOutFreq freq) {
+    if (!initialized) return false;
+    
+    // Set CLKOUT frequency in CONTROL_1 bits [7:5]
+    uint8_t ctrl1 = 0;
+    if (!readRegister(REG_CONTROL_1, &ctrl1)) return false;
+    ctrl1 = (ctrl1 & 0x1F) | ((freq & 0x07) << 5);
+    if (!writeRegister(REG_CONTROL_1, ctrl1)) return false;
+    
+    if (logger) {
+        const char* freq_str[] = {"32768Hz", "16384Hz", "8192Hz", "4096Hz", "2048Hz", "1024Hz", "1Hz", "OFF"};
+        logger->info("RTC", (String("CLKOUT set to ") + freq_str[freq]).c_str());
+    }
     
     return true;
 }
