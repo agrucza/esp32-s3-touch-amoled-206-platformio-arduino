@@ -10,6 +10,7 @@
 #include "display/display.hpp"
 #include "button/button.hpp"
 #include "storage/fs_manager.hpp"
+#include "touch/touch_controller.hpp"
 
 class SystemManager {
 private:
@@ -20,7 +21,7 @@ private:
     PMU pmu;
     FSManager fsManager;
     Display display;
-    //TouchController touch;
+    TouchController touchController;
 
     void sleep();
     void wakeup();

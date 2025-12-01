@@ -13,7 +13,6 @@ private:
     bool initialized = false;
 public:
     PMU(Logger *logger) { this->logger = logger; };
-    PMU(Logger *logger, TwoWire &wire);
     bool setBus(TwoWire &wire);
     bool isInitialized() const { return initialized; }
     bool isBatteryConnect();

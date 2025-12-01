@@ -1,17 +1,27 @@
 #include "system_manager.hpp"
 
 SystemManager::SystemManager(Logger* logger)
-    : logger(logger), pmu(logger), display(logger), fsManager(logger) // Explicitly initialize pmu
+    : logger(logger), pmu(logger), display(logger), touchController(logger), fsManager(logger) // Explicitly initialize pmu
 {
     logger->header("SystemManager Initialization");
 
     // init power button
     pinMode(BTN_BOOT, INPUT_PULLUP);
     
-    // Initialize I2C bus (400kHz Fast Mode)
-    logger->info("I2C", "Initializing bus at 400kHz...");
-    Wire.begin(I2C_SDA, I2C_SCL, 400000); 
+    // Initialize I2C bus (100kHz Standard Mode)
+    logger->info("I2C", "Initializing bus at 100kHz...");
+    Wire.begin(I2C_SDA, I2C_SCL, 100000);
     this->i2c = &Wire;
+    
+    Serial.println("I2C scanner start");
+    for (uint8_t addr = 1; addr < 127; ++addr) {
+        i2c->beginTransmission(addr);
+        int r = i2c->endTransmission();
+        if (r == 0) {
+        Serial.printf("Found I2C device at 0x%02X\n", addr);
+        } // ignore other errors here
+    }
+    Serial.println("I2C scanner done");
 
     logger->success("I2C", "Bus initialized at 400kHz");
 
@@ -31,7 +41,17 @@ SystemManager::SystemManager(Logger* logger)
         return;
     }
 
-    if(!fsManager.isInitialized()) {
+    // Initialize Touch
+    logger->info("TOUCH", "Initializing Touch Controller...");
+    if (!touchController.setBus(*i2c)) {
+        logger->failure("TOUCH", "Touch Controller initialization failed");
+        logger->footer();
+        return;
+    }
+
+    // Initialize File System
+    logger->info("LittleFS", "Initializing LittleFS...");
+    if (!fsManager.isInitialized()) {
         logger->failure("LittleFS", "Failed to initialize LittleFS");
         logger->footer();
         return;
@@ -51,6 +71,8 @@ void SystemManager::update() {
     if (buttonPressed(BTN_BOOT)) {
         this->sleep();
     }
+
+    touchController.handleInterrupt();
     
     // Heartbeat every 5 seconds
     if (millis() - lastTime > 5000) {
