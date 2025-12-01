@@ -20,7 +20,6 @@ private:
     bool sleeping = false;
     unsigned long last_activity_time = 0;
     static constexpr unsigned long LIGHT_SLEEP_TIMEOUT = 30000;  // 30 seconds
-    static constexpr unsigned long DEEP_SLEEP_TIMEOUT = 60000;//300000;  // 5 minutes
     
     Logger* logger = nullptr;
     TwoWire* i2c = nullptr;
@@ -31,8 +30,7 @@ private:
     RTC rtc;
     IMU imu;
 
-    void lightSleep();
-    void deepSleep();
+    void sleep();
     void wakeup();
     void logHeartbeat();
 public:

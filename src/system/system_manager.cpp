@@ -89,9 +89,6 @@ SystemManager::SystemManager(Logger* logger)
     logger->success("SYSTEM", "All components initialized successfully");
     logger->footer();
     
-    // Initialize activity tracking
-    last_activity_time = millis();
-    
     this->initialized = true;
     return;
 }
@@ -103,8 +100,7 @@ void SystemManager::update() {
     
     // Simple button check
     if (buttonPressed(BTN_BOOT)) {
-        last_activity_time = current_time; // Reset activity timer
-        this->lightSleep();
+        this->sleep();
         return;
     }
 
@@ -115,16 +111,12 @@ void SystemManager::update() {
         logger->info("RTC", "⏰ ALARM TRIGGERED!");
         rtc.clearAlarmFlag();
         rtc.clearAlarm();
-        last_activity_time = current_time; // Reset activity timer
     }
     
-    // Hybrid Sleep Logic
-    if (idle_time > DEEP_SLEEP_TIMEOUT) {
-        logger->info("SYSTEM", "Entering deep sleep (inactive >5min)");
-        deepSleep();
-    } else if (idle_time > LIGHT_SLEEP_TIMEOUT && !sleeping) {
+    // Auto Sleep Logic
+    if (idle_time > LIGHT_SLEEP_TIMEOUT && !sleeping) {
         logger->info("SYSTEM", "Entering light sleep (inactive >30s)");
-        lightSleep();
+        sleep();
     }
     
     // Heartbeat every 5 seconds
@@ -135,72 +127,41 @@ void SystemManager::update() {
     }
 }
 
-void SystemManager::lightSleep() {
-    if (sleeping) return;
-    
+void SystemManager::sleep() {
     logger->info("SYSTEM", "Entering light sleep mode...");
-    
-    display.powerOff();
-    delay(50);
-    
-    // Wait until button is released
-    while (digitalRead(BTN_BOOT) == LOW) {
-        delay(10);
+
+    if(!sleeping) {
+        display.powerOff();
+        delay(50); // Safely turn off display
+
+        // TODO: sleep peripherals (I2C, PMU, etc.)
+
+        // Wait until button is released (HIGH)
+        while (digitalRead(BTN_BOOT) == LOW) {
+            delay(10);
+        }
     }
 
+    logger->info("SYSTEM", "Button released, preparing for light sleep...");
+
     sleeping = true;
-    esp_sleep_enable_ext0_wakeup((gpio_num_t)BTN_BOOT, 0); // Wakeup on button only
+    esp_sleep_enable_ext0_wakeup((gpio_num_t)BTN_BOOT, 0); // Wakeup on LOW
+    esp_sleep_enable_timer_wakeup(5000000); // Wakeup after 5 seconds (microseconds)
     esp_light_sleep_start();
 
+    // After light sleep: reinitialize display
     logger->info("SYSTEM", "Waking up from light sleep...");
     wakeup();
 }
 
-void SystemManager::deepSleep() {
-    logger->info("SYSTEM", "Preparing for deep sleep...");
-    
-    display.powerOff();
-    delay(50);
-    
-    // Set RTC alarm to wake up in 1 hour
-    RTC::DateTime current;
-    if (rtc.getDateTime(current)) {
-        uint8_t wakeup_hour = (current.hour + 1) % 24;
-        rtc.setAlarm(wakeup_hour, current.minute);
-        logger->info("SYSTEM", (String("Deep sleep until ") + String(wakeup_hour) + ":" + String(current.minute)).c_str());
-    }
-    
-    // Enable wakeup on button only (RTC GPIO39 not supported for ext1)
-    esp_sleep_enable_ext0_wakeup((gpio_num_t)BTN_BOOT, 0);
-    
-    logger->info("SYSTEM", "Entering deep sleep...");
-    delay(100);
-    
-    esp_deep_sleep_start();
-    // Never returns - ESP32 reboots on wakeup
-}
-
 void SystemManager::wakeup() {
     esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
-    
-    switch (wakeup_reason) {
-        case ESP_SLEEP_WAKEUP_EXT0:
-            logger->info("SYSTEM", "Woke up by button press");
-            break;
-        case ESP_SLEEP_WAKEUP_EXT1:
-            logger->info("SYSTEM", "Woke up by touch/RTC interrupt");
-            break;
-        case ESP_SLEEP_WAKEUP_TIMER:
-            logger->info("SYSTEM", "Woke up by timer");
-            break;
-        default:
-            logger->info("SYSTEM", "Woke up (unknown reason)");
-            break;
+
+    if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT0) {
+        logger->info("SYSTEM", "Woke up by button press");
+        display.powerOn();
+        sleeping = false;
     }
-    
-    display.powerOn();
-    sleeping = false;
-    last_activity_time = millis(); // Reset activity timer
 }
 
 void SystemManager::logHeartbeat() {
