@@ -14,6 +14,7 @@
 #include "rtc/rtc.hpp"
 #include "imu/imu.hpp"
 #include "motor/motor.hpp"
+#include "storage/sd_card.hpp"
 
 class SystemManager {
 private:
@@ -31,6 +32,7 @@ private:
     RTC rtc;
     IMU imu;
     Motor motor;
+    SDCard sdCard;
 
     void sleep();
     void wakeup();
@@ -43,6 +45,7 @@ public:
     RTC& getRTC() { return rtc; }
     IMU& getIMU() { return imu; }
     Motor& getMotor() { return motor; }
+    SDCard& getSDCard() { return sdCard; }
     Logger* getLogger() { return logger; }
     TwoWire* getI2C() { return i2c; }
     

@@ -1,7 +1,7 @@
 #include "system_manager.hpp"
 
 SystemManager::SystemManager(Logger* logger)
-    : logger(logger), pmu(logger), display(logger), touchController(logger), fsManager(logger), rtc(logger), imu(logger), motor(logger)
+    : logger(logger), pmu(logger), display(logger), touchController(logger), fsManager(logger), rtc(logger), imu(logger), motor(logger), sdCard(logger)
 {
     logger->header("SystemManager Initialization");
 
@@ -86,6 +86,9 @@ SystemManager::SystemManager(Logger* logger)
         return;
     }
     
+    // Initialize SD Card (optional — system continues if no card present)
+    sdCard.begin();
+
     // Initialize Motor
     motor.begin();
     motor.doubleBuzz();  // Startup confirmation — two pulses = system ready
@@ -217,6 +220,11 @@ void SystemManager::logHeartbeat() {
     logger->info("MEMORY", (String("Internal RAM Free: ") + String(ESP.getFreeHeap() / 1024) + String(" KB")).c_str());
     logger->info("MEMORY", (String("PSRAM Free: ") + String(ESP.getFreePsram() / 1024) + String(" KB")).c_str());
     logger->info("MEMORY", (String("FLASH Size: ") + String(ESP.getFlashChipSize() / 1024) + String(" KB")).c_str());
+
+    // SD Card Status
+    if (sdCard.isInitialized()) {
+        logger->info("SD", (String("SD: ") + String(sdCard.usedMB()) + String("MB used / ") + String(sdCard.totalMB()) + String("MB total")).c_str());
+    }
 
     logger->info("BATTERY", (String("Battery Voltage: ") + String(this->getPMU().getBattVoltage()) + String(" mV")).c_str());
     logger->info("BATTERY", (String("Battery Percentage: ") + String(this->getPMU().getBatteryPercent()) + String(" %")).c_str());
