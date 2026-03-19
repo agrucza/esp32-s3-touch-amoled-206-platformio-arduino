@@ -34,9 +34,12 @@ private:
     };
     
     uint8_t interrupt_pin = RTC_INT;
-    volatile bool alarm_triggered = false;
-    volatile bool timer_triggered = false;
-    volatile bool minute_triggered = false;
+    volatile bool irq_pending = false;
+    bool alarm_triggered = false;
+    bool timer_triggered = false;
+    bool minute_triggered = false;
+
+    void updateIrqFlags();
     
     // Helper functions
     uint8_t bcdToDec(uint8_t val) { return (val / 16 * 10) + (val % 16); }
@@ -73,7 +76,7 @@ public:
     // Alarm functions
     bool setAlarm(uint8_t hour, uint8_t minute, uint8_t second = 0xFF, uint8_t day = 0xFF);
     bool clearAlarm();
-    bool isAlarmTriggered() { return alarm_triggered; }
+    bool isAlarmTriggered() { updateIrqFlags(); return alarm_triggered; }
     void clearAlarmFlag() { alarm_triggered = false; }
     
     // Timer functions (countdown timer)
@@ -86,13 +89,13 @@ public:
     
     bool setTimer(uint8_t value, TimerClockFreq freq);
     bool clearTimer();
-    bool isTimerTriggered() { return timer_triggered; }
+    bool isTimerTriggered() { updateIrqFlags(); return timer_triggered; }
     void clearTimerFlag() { timer_triggered = false; }
     
     // Periodic minute/second interrupts
     bool enableMinuteInterrupt();
     bool disableMinuteInterrupt();
-    bool isMinuteTriggered() { return minute_triggered; }
+    bool isMinuteTriggered() { updateIrqFlags(); return minute_triggered; }
     void clearMinuteFlag() { minute_triggered = false; }
     
     // Clock output (CLKOUT pin)

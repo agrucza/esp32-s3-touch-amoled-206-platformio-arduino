@@ -17,8 +17,12 @@ bool IMU::setBus(TwoWire &bus) {
         return false;
     }
     
+    if (whoami != CHIP_ID) {
+        if (logger != nullptr) logger->failure("IMU", (String("WHO_AM_I mismatch: got 0x") + String(whoami, HEX) + " expected 0x05").c_str());
+        return false;
+    }
     if (logger != nullptr) logger->info("IMU", (String("Chip ID: 0x") + String(whoami, HEX)).c_str());
-    
+
     // Software reset
     writeRegister(REG_RESET, 0xB0);
     delay(10);
@@ -31,15 +35,15 @@ bool IMU::setBus(TwoWire &bus) {
         return false;
     }
     
-    // Configure accelerometer: 8g range, 128Hz ODR
-    // CTRL2: [7:4] = accel range (0011 = 8g), [3:0] = ODR (0110 = 128Hz)
-    if (!writeRegister(REG_CTRL2, 0x36)) {
+    // Configure accelerometer: ±8g range, 112Hz ODR
+    // CTRL2: bits[6:4] = aAFS (010 = ±8g), bits[3:0] = aODR (0110 = 112.1Hz)
+    if (!writeRegister(REG_CTRL2, 0x26)) {
         if (logger != nullptr) logger->failure("IMU", "Failed to configure accelerometer");
         return false;
     }
     
-    // Configure gyroscope: 1024dps range, 128Hz ODR
-    // CTRL3: [7:4] = gyro range (0110 = 1024dps), [3:0] = ODR (0110 = 128Hz)
+    // Configure gyroscope: ±1024dps range, 112Hz ODR
+    // CTRL3: bits[6:4] = gGFS (110 = ±1024dps), bits[3:0] = gODR (0110 = 112.1Hz)
     if (!writeRegister(REG_CTRL3, 0x66)) {
         if (logger != nullptr) logger->failure("IMU", "Failed to configure gyroscope");
         return false;
@@ -168,12 +172,13 @@ bool IMU::checkWristTilt() {
     GyroData gyro;
     
     if (!readAccel(accel) || !readGyro(gyro)) return false;
-    
+    checkDataReadyStatus();  // Read STATUS0 to de-assert INT2 and re-arm ISR
+
     // Simple state machine: remember rotation, wait for target position
     static enum { IDLE, TRIGGERED } state = IDLE;
     static unsigned long last_rotation_time = 0;
     static unsigned long state_time = 0;
-    
+
     // Target position: WATCH_UP (X > 0.2, Z < -0.2)
     bool watch_up = (accel.x > 0.20f && accel.z < -0.20f);
     bool strong_rotation = (abs(gyro.x) > 40.0f || abs(gyro.y) > 40.0f || abs(gyro.z) > 40.0f);
@@ -218,12 +223,13 @@ bool IMU::checkWristTiltDown() {
     GyroData gyro;
     
     if (!readAccel(accel) || !readGyro(gyro)) return false;
-    
+    checkDataReadyStatus();  // Read STATUS0 to de-assert INT2 and re-arm ISR
+
     // Simple state machine: remember rotation, wait for target position
     static enum { IDLE, TRIGGERED } state = IDLE;
     static unsigned long last_rotation_time = 0;
     static unsigned long state_time = 0;
-    
+
     // Target positions
     bool watch_up = (accel.x > 0.20f && accel.z < -0.20f);
     bool arm_down_standing = (accel.y < -0.35f);
@@ -260,13 +266,20 @@ bool IMU::checkWristTiltDown() {
 
 bool IMU::checkDataReadyStatus() {
     if (!initialized) return false;
-    
+
     uint8_t status0 = 0;
     if (!readRegister(REG_STATUS0, &status0)) return false;
-    
-    // Reading STATUS0 clears INT2 in syncSmpl mode
+
+    // Reading STATUS0 clears INT2 in syncSmpl mode, re-arming it for the next event.
     // Bit 0: Accel data ready, Bit 1: Gyro data ready
     return (status0 & 0x03) == 0x03;  // Both accel and gyro ready
+}
+
+void IMU::clearDataReadyFlag() {
+    motion_detected = false;
+    // Must read STATUS0 to de-assert INT2 in syncSmpl mode, otherwise INT2 stays
+    // HIGH and no new rising edge fires — the ISR would never trigger again.
+    checkDataReadyStatus();
 }
 
 bool IMU::checkMotion() {

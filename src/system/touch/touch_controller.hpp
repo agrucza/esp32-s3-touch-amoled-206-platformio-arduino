@@ -36,6 +36,8 @@ public:
     bool setBus(TwoWire &bus);
 
     void handleInterrupt();
+    bool sleep();   // Deep sleep mode — use wake() to restore
+    bool wake();    // Hardware reset + restore normal mode after sleep
 
     bool readTouch(uint16_t &x, uint16_t &y);
 

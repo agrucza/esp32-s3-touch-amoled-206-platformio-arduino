@@ -3,6 +3,9 @@
 
 Display::Display(Logger* logger) : gfx(nullptr), initialized(false) {
     this->logger = logger;
+}
+
+bool Display::init() {
     logger->debug("DISPLAY", "Starting CO5300 AMOLED initialization...");
 
     // Initialize QSPI bus
@@ -11,6 +14,7 @@ Display::Display(Logger* logger) : gfx(nullptr), initialized(false) {
 
     if (!qspi_bus) {
         logger->failure("DISPLAY", "Failed to create QSPI bus");
+        return false;
     }
 
     logger->success("DISPLAY", "QSPI bus created successfully");
@@ -24,11 +28,12 @@ Display::Display(Logger* logger) : gfx(nullptr), initialized(false) {
         LCD_COL_OFFSET1, LCD_ROW_OFFSET1,
         LCD_COL_OFFSET2, LCD_ROW_OFFSET2
     );
-    
+
     if (!gfx) {
         logger->failure("DISPLAY", "Failed to create CO5300 display driver");
         delete qspi_bus;
         qspi_bus = nullptr;
+        return false;
     }
     logger->success("DISPLAY", "CO5300 driver instance created");
 
@@ -43,6 +48,7 @@ Display::Display(Logger* logger) : gfx(nullptr), initialized(false) {
 
     logger->success("DISPLAY", "Display ready");
     initialized = true;
+    return true;
 }
 
 Display::~Display() {

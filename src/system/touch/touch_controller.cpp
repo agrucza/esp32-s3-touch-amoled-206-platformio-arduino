@@ -4,8 +4,30 @@
 
 bool TouchController::setBus(TwoWire &bus) {
     i2c = &bus;
-    
     return init();
+}
+
+bool TouchController::sleep() {
+    if (!initialized || !i2c) return false;
+    i2c->beginTransmission(i2c_addr);
+    i2c->write(REG_POWER_MODE);
+    i2c->write(0x03);  // Deep sleep mode
+    return (i2c->endTransmission() == 0);
+}
+
+bool TouchController::wake() {
+    if (!i2c) return false;
+    // Hardware reset to exit deep sleep (I2C is unresponsive in deep sleep)
+    pinMode(reset_pin, OUTPUT);
+    digitalWrite(reset_pin, LOW);
+    delay(5);
+    digitalWrite(reset_pin, HIGH);
+    delay(50);
+    // Restore operating mode
+    i2c->beginTransmission(i2c_addr);
+    i2c->write(REG_POWER_MODE);
+    i2c->write(0x01);
+    return (i2c->endTransmission() == 0);
 }
 
 bool TouchController::init() {
@@ -86,12 +108,12 @@ void TouchController::handleInterrupt() {
             if (duration < 800 && (abs_dx > 50 || abs_dy > 50)) {
                 String gesture = "";
                 
-                // Determine edge zones (assume ~480x480 display, adjust if needed)
+                // Determine edge zones based on actual display dimensions
                 const uint16_t edge_threshold = 100; // pixels from edge
-                bool from_top = (touch_start_y < edge_threshold);
-                bool from_bottom = (touch_start_y > 380);
-                bool from_left = (touch_start_x < edge_threshold);
-                bool from_right = (touch_start_x > 380);
+                bool from_top    = (touch_start_y < edge_threshold);
+                bool from_bottom = (touch_start_y > (LCD_HEIGHT - edge_threshold));
+                bool from_left   = (touch_start_x < edge_threshold);
+                bool from_right  = (touch_start_x > (LCD_WIDTH - edge_threshold));
                 
                 // Build gesture name from start position + direction
                 if (from_top && from_left) gesture = "TopLeft";

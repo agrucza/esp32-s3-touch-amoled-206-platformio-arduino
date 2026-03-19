@@ -28,12 +28,24 @@ bool RTC::setBus(TwoWire &bus) {
 void IRAM_ATTR RTC::isrArg(void* arg) {
     RTC* self = static_cast<RTC*>(arg);
     if (self) {
-        // Check which interrupt fired by reading CONTROL_2
-        // We'll set flags and check them in main loop
-        self->alarm_triggered = true;  // Could be alarm, timer, or minute
-        self->timer_triggered = true;
-        self->minute_triggered = true;
+        self->irq_pending = true;
     }
+}
+
+// Called from main-loop context to read CONTROL_2 and set specific flags.
+// PCF85063 CONTROL_2: bit6=AF (alarm), bit3=TF (timer); no distinct MF bit.
+void RTC::updateIrqFlags() {
+    if (!irq_pending) return;
+    irq_pending = false;
+
+    uint8_t ctrl2 = 0;
+    if (!readRegister(REG_CONTROL_2, &ctrl2)) return;
+
+    if (ctrl2 & 0x40) alarm_triggered  = true;  // AF
+    if (ctrl2 & 0x08) timer_triggered  = true;  // TF
+    // Minute interrupt generates a pulse with no persistent flag bit;
+    // treat any IRQ that set neither AF nor TF as a minute event.
+    if (!(ctrl2 & 0x48))  minute_triggered = true;
 }
 
 bool RTC::writeRegister(uint8_t reg, uint8_t value) {
@@ -99,10 +111,17 @@ bool RTC::setDateTime(const DateTime& dt) {
 
 bool RTC::getDateTime(DateTime& dt) {
     if (!initialized) return false;
-    
+
     uint8_t data[7];
     if (!readRegisters(REG_SECONDS, data, 7)) return false;
-    
+
+    // Bit 7 of the seconds register is the OS (Oscillator Stop) flag.
+    // It is set when the RTC loses power and the time is no longer valid.
+    if (data[0] & 0x80) {
+        if (logger) logger->warn("RTC", "Oscillator stopped — time invalid, set clock before use");
+        return false;
+    }
+
     dt.second = bcdToDec(data[0] & 0x7F);
     dt.minute = bcdToDec(data[1] & 0x7F);
     dt.hour = bcdToDec(data[2] & 0x3F);
@@ -189,10 +208,10 @@ bool RTC::setTimer(uint8_t value, TimerClockFreq freq) {
     // PCF85063 uses OFFSET register as timer countdown
     if (!writeRegister(REG_OFFSET, value)) return false;
     
-    // Enable timer interrupt in CONTROL_1
-    // Bits [2:0] = timer frequency
-    uint8_t ctrl1 = freq & 0x03;
-    ctrl1 |= 0x04;  // Enable timer
+    // Enable timer in CONTROL_1
+    // Bit 3 = TE (timer enable), bits [2:1] = TD (clock divider / frequency)
+    uint8_t ctrl1 = (freq & 0x03) << 1;  // TD[1:0] in bits [2:1]
+    ctrl1 |= 0x08;                        // TE = bit 3
     if (!writeRegister(REG_CONTROL_1, ctrl1)) return false;
     
     // Enable timer interrupt in CONTROL_2 (bit 4 = TIE)
@@ -215,7 +234,7 @@ bool RTC::clearTimer() {
     // Disable timer in CONTROL_1
     uint8_t ctrl1 = 0;
     if (!readRegister(REG_CONTROL_1, &ctrl1)) return false;
-    ctrl1 &= ~0x04;  // Clear timer enable
+    ctrl1 &= ~0x08;  // Clear TE (timer enable, bit 3)
     if (!writeRegister(REG_CONTROL_1, ctrl1)) return false;
     
     // Disable timer interrupt in CONTROL_2

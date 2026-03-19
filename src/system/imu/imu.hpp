@@ -82,9 +82,6 @@ private:
         REG_dVZ_L = 0x55,
         REG_dVZ_H = 0x56,
         REG_RESET = 0x60,
-        REG_STEP_CNT_LOW = 0x07,   // Step counter low byte
-        REG_STEP_CNT_MID = 0x08,   // Step counter mid byte  
-        REG_STEP_CNT_HIGH = 0x09,  // Step counter high byte
     };
     
     enum MotionInterruptMode : uint8_t {
@@ -120,7 +117,7 @@ public:
     
     // Data ready interrupt
     bool isDataReady() { return motion_detected; }
-    void clearDataReadyFlag() { motion_detected = false; }
+    void clearDataReadyFlag();    // Clears software flag AND reads STATUS0 to re-arm INT2
     bool checkDataReadyStatus();  // Poll STATUS0 register instead of interrupt
     
     // Software motion detection

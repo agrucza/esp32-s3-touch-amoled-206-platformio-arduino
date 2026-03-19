@@ -12,18 +12,18 @@ SystemManager::SystemManager(Logger* logger)
     logger->info("I2C", "Initializing bus at 100kHz...");
     Wire.begin(I2C_SDA, I2C_SCL, 100000);
     this->i2c = &Wire;
-    
-    Serial.println("I2C scanner start");
+
+    logger->debug("I2C", "Scanning bus...");
     for (uint8_t addr = 1; addr < 127; ++addr) {
         i2c->beginTransmission(addr);
-        int r = i2c->endTransmission();
-        if (r == 0) {
-        Serial.printf("Found I2C device at 0x%02X\n", addr);
-        } // ignore other errors here
+        if (i2c->endTransmission() == 0) {
+            char buf[32];
+            snprintf(buf, sizeof(buf), "Found device at 0x%02X", addr);
+            logger->debug("I2C", buf);
+        }
     }
-    Serial.println("I2C scanner done");
 
-    logger->success("I2C", "Bus initialized at 400kHz");
+    logger->success("I2C", "Bus initialized at 100kHz");
 
     // Initialize PMU
     logger->info("PMU", "Initializing AXP2101...");
@@ -33,9 +33,9 @@ SystemManager::SystemManager(Logger* logger)
         return;
     }
 
-    // Initialize Display
+    // Initialize Display (must come after PMU to ensure power rails are up)
     logger->info("DISPLAY", "Initializing CO5300 AMOLED...");
-    if (!display.isInitialized()) {
+    if (!display.init()) {
         logger->failure("DISPLAY", "CO5300 initialization failed");
         logger->footer();
         return;
@@ -111,13 +111,13 @@ void SystemManager::update() {
     if (imu.checkWristTilt()) {
         if (sleeping) {
             logger->info("IMU", "⌚ Wrist raise - waking display!");
+            touchController.wake();
             display.powerOn();
             sleeping = false;
         }
-
         last_activity_time = millis();
     }
-    
+
     // Check for wrist tilt DOWN to sleep
     if (imu.checkWristTiltDown()) {
         if (!sleeping) {
@@ -125,14 +125,31 @@ void SystemManager::update() {
             sleep();
         }
     }
-    
+
+    // General motion resets the idle timer (prevents sleep during active use)
+    if (imu.checkMotion()) {
+        last_activity_time = millis();
+    }
+
     // Check RTC alarm
     if (rtc.isAlarmTriggered()) {
         logger->info("RTC", "⏰ ALARM TRIGGERED!");
         rtc.clearAlarmFlag();
         rtc.clearAlarm();
     }
-    
+
+    // Check RTC countdown timer
+    if (rtc.isTimerTriggered()) {
+        logger->info("RTC", "⏱ TIMER TRIGGERED!");
+        rtc.clearTimerFlag();
+    }
+
+    // Check RTC minute tick
+    if (rtc.isMinuteTriggered()) {
+        logger->info("RTC", "🕐 MINUTE TICK");
+        rtc.clearMinuteFlag();
+    }
+
     // Auto Sleep Logic
     if (idle_time > LIGHT_SLEEP_TIMEOUT && !sleeping) {
         logger->info("SYSTEM", "Entering light sleep (inactive >30s)");
@@ -152,9 +169,8 @@ void SystemManager::sleep() {
 
     if(!sleeping) {
         display.powerOff();
-        delay(50); // Safely turn off display
-
-        // TODO: sleep peripherals (I2C, PMU, etc.)
+        delay(50);
+        touchController.sleep();
 
         // Wait until button is released (HIGH)
         while (digitalRead(BTN_BOOT) == LOW) {
@@ -179,68 +195,63 @@ void SystemManager::wakeup() {
 
     if (wakeup_reason == ESP_SLEEP_WAKEUP_EXT0) {
         logger->info("SYSTEM", "Woke up by button press");
+        touchController.wake();
         display.powerOn();
         sleeping = false;
-        last_activity_time = millis();  // Reset idle timer!
+        last_activity_time = millis();
     }
 }
 
 void SystemManager::logHeartbeat() {
-    static unsigned long lastTime = 0;
     static int heartbeat = 0;
+    heartbeat++;
+
+    logger->header((String("SYSTEM HEARTBEAT #") + String(heartbeat)).c_str());
+    logger->info("UPTIME", (String(millis() / 1000) + String(" seconds")).c_str());
     
-    // Heartbeat every 5 seconds
-    if (millis() - lastTime > 5000) {
-        lastTime = millis();
-        heartbeat++;
+    // Memory Status
+    logger->info("MEMORY", (String("Internal RAM Free: ") + String(ESP.getFreeHeap() / 1024) + String(" KB")).c_str());
+    logger->info("MEMORY", (String("PSRAM Free: ") + String(ESP.getFreePsram() / 1024) + String(" KB")).c_str());
+    logger->info("MEMORY", (String("FLASH Size: ") + String(ESP.getFlashChipSize() / 1024) + String(" KB")).c_str());
 
-        logger->header((String("SYSTEM HEARTBEAT #") + String(heartbeat)).c_str());
-        logger->info("UPTIME", (String(millis() / 1000) + String(" seconds")).c_str());
-        
-        // Memory Status
-        logger->info("MEMORY", (String("Internal RAM Free: ") + String(ESP.getFreeHeap() / 1024) + String(" KB")).c_str());
-        logger->info("MEMORY", (String("PSRAM Free: ") + String(ESP.getFreePsram() / 1024) + String(" KB")).c_str());
-        logger->info("MEMORY", (String("FLASH Size: ") + String(ESP.getFlashChipSize() / 1024) + String(" KB")).c_str());
+    logger->info("BATTERY", (String("Battery Voltage: ") + String(this->getPMU().getBattVoltage()) + String(" mV")).c_str());
+    logger->info("BATTERY", (String("Battery Percentage: ") + String(this->getPMU().getBatteryPercent()) + String(" %")).c_str());
 
-        logger->info("BATTERY", (String("Battery Voltage: ") + String(this->getPMU().getBattVoltage()) + String(" mV")).c_str());
-        logger->info("BATTERY", (String("Battery Percentage: ") + String(this->getPMU().getBatteryPercent()) + String(" %")).c_str());
+    logger->info("BATTERY", (String("USB Connected: ") + String(this->getPMU().isUSBConnected() ? "Yes" : "No")).c_str());
+    logger->info("BATTERY", (String("Battery Connected: ") + String(this->getPMU().isBatteryConnect() ? "Yes" : "No")).c_str());
+    logger->info("BATTERY", (String("Charging: ") + String(this->getPMU().isCharging() ? "Yes" : "No")).c_str());
 
-        logger->info("BATTERY", (String("USB Connected: ") + String(this->getPMU().isUSBConnected() ? "Yes" : "No")).c_str());
-        logger->info("BATTERY", (String("Battery Connected: ") + String(this->getPMU().isBatteryConnect() ? "Yes" : "No")).c_str());
-        logger->info("BATTERY", (String("Charging: ") + String(this->getPMU().isCharging() ? "Yes" : "No")).c_str());
-
-        // RTC Status
-        if (rtc.isInitialized()) {
-            RTC::DateTime dt;
-            if (rtc.getDateTime(dt)) {
-                char timeStr[32];
-                snprintf(timeStr, sizeof(timeStr), "%04d-%02d-%02d %02d:%02d:%02d", 
-                         dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second);
-                logger->info("RTC", (String("Current Time: ") + String(timeStr)).c_str());
-            } else {
-                logger->warn("RTC", "Failed to read time");
-            }
+    // RTC Status
+    if (rtc.isInitialized()) {
+        RTC::DateTime dt;
+        if (rtc.getDateTime(dt)) {
+            char timeStr[32];
+            snprintf(timeStr, sizeof(timeStr), "%04d-%02d-%02d %02d:%02d:%02d", 
+                        dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second);
+            logger->info("RTC", (String("Current Time: ") + String(timeStr)).c_str());
+        } else {
+            logger->warn("RTC", "Failed to read time");
         }
-        
-        // IMU Status
-        if (imu.isInitialized()) {
-            IMU::AccelData accel;
-            IMU::GyroData gyro;
-            float temp;
-            
-            if (imu.readAccel(accel)) {
-                logger->info("IMU", (String("Accel: X=") + String(accel.x, 2) + "g Y=" + String(accel.y, 2) + "g Z=" + String(accel.z, 2) + "g").c_str());
-            }
-            
-            if (imu.readGyro(gyro)) {
-                logger->info("IMU", (String("Gyro: X=") + String(gyro.x, 1) + "°/s Y=" + String(gyro.y, 1) + "°/s Z=" + String(gyro.z, 1) + "°/s").c_str());
-            }
-            
-            if (imu.readTemperature(temp)) {
-                logger->info("IMU", (String("Temperature: ") + String(temp, 1) + "°C").c_str());
-            }
-        }
-        
-        logger->footer();
     }
+    
+    // IMU Status
+    if (imu.isInitialized()) {
+        IMU::AccelData accel;
+        IMU::GyroData gyro;
+        float temp;
+        
+        if (imu.readAccel(accel)) {
+            logger->info("IMU", (String("Accel: X=") + String(accel.x, 2) + "g Y=" + String(accel.y, 2) + "g Z=" + String(accel.z, 2) + "g").c_str());
+        }
+        
+        if (imu.readGyro(gyro)) {
+            logger->info("IMU", (String("Gyro: X=") + String(gyro.x, 1) + "°/s Y=" + String(gyro.y, 1) + "°/s Z=" + String(gyro.z, 1) + "°/s").c_str());
+        }
+        
+        if (imu.readTemperature(temp)) {
+            logger->info("IMU", (String("Temperature: ") + String(temp, 1) + "°C").c_str());
+        }
+    }
+        
+    logger->footer();
 }
