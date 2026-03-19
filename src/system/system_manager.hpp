@@ -13,6 +13,7 @@
 #include "touch/touch_controller.hpp"
 #include "rtc/rtc.hpp"
 #include "imu/imu.hpp"
+#include "motor/motor.hpp"
 
 class SystemManager {
 private:
@@ -29,6 +30,7 @@ private:
     TouchController touchController;
     RTC rtc;
     IMU imu;
+    Motor motor;
 
     void sleep();
     void wakeup();
@@ -40,6 +42,7 @@ public:
     Display& getDisplay() { return display; }
     RTC& getRTC() { return rtc; }
     IMU& getIMU() { return imu; }
+    Motor& getMotor() { return motor; }
     Logger* getLogger() { return logger; }
     TwoWire* getI2C() { return i2c; }
     

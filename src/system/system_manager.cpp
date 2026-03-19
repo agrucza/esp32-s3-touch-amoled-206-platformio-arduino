@@ -1,7 +1,7 @@
 #include "system_manager.hpp"
 
 SystemManager::SystemManager(Logger* logger)
-    : logger(logger), pmu(logger), display(logger), touchController(logger), fsManager(logger), rtc(logger), imu(logger)
+    : logger(logger), pmu(logger), display(logger), touchController(logger), fsManager(logger), rtc(logger), imu(logger), motor(logger)
 {
     logger->header("SystemManager Initialization");
 
@@ -86,6 +86,10 @@ SystemManager::SystemManager(Logger* logger)
         return;
     }
     
+    // Initialize Motor
+    motor.begin();
+    motor.doubleBuzz();  // Startup confirmation — two pulses = system ready
+
     logger->success("SYSTEM", "All components initialized successfully");
     logger->footer();
     
@@ -251,7 +255,12 @@ void SystemManager::logHeartbeat() {
         if (imu.readTemperature(temp)) {
             logger->info("IMU", (String("Temperature: ") + String(temp, 1) + "°C").c_str());
         }
+        // INT1 fire count — expect ~560 per 5s interval at 112Hz if interrupt is working
+        logger->info("IMU", (String("INT1 fires this interval: ") + String(imu.getIsrCount())).c_str());
+        imu.resetIsrCount();
     }
+    
+    motor.buzz();
         
     logger->footer();
 }

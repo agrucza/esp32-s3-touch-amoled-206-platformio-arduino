@@ -1,15 +1,17 @@
 #include "imu.hpp"
 
-volatile bool IMU::motion_detected = false;
+volatile bool     IMU::motion_detected = false;
+volatile uint32_t IMU::isr_count       = 0;
 
 void IRAM_ATTR IMU::motionISR() {
     motion_detected = true;
+    isr_count++;
 }
 
 bool IMU::setBus(TwoWire &bus) {
     i2c = &bus;
-    interrupt_pin = IMU_INT2;
-    
+    interrupt_pin = IMU_INT1;
+
     // Read chip ID
     uint8_t whoami = 0;
     if (!readRegister(REG_WHO_AM_I, &whoami)) {
@@ -49,27 +51,27 @@ bool IMU::setBus(TwoWire &bus) {
         return false;
     }
     
-    // Enable accelerometer and gyroscope with syncSmpl
-    // CTRL7: [7] = syncSmpl (1 = level mode INT2), [1] = enable gyro, [0] = enable accel
-    if (!writeRegister(REG_CTRL7, 0x83)) {  // 0x83 = syncSmpl + gyro + accel
+    // Enable accelerometer and gyroscope — syncSmpl disabled so DRDY routes to INT1
+    // CTRL7: [7] = syncSmpl (0 = pulse on INT1), [1] = gEN, [0] = aEN
+    if (!writeRegister(REG_CTRL7, 0x03)) {  // 0x03 = gyro + accel, no syncSmpl
         if (logger != nullptr) logger->failure("IMU", "Failed to enable sensors");
         return false;
     }
-    
+
     delay(50);
-    
-    // Setup INT2 for data ready interrupt (not INT1!)
-    interrupt_pin = IMU_INT2;
+
+    // Setup INT1 (GPIO21) for data-ready interrupt — INT2 is only on test point TP15
+    interrupt_pin = IMU_INT1;
     pinMode(interrupt_pin, INPUT);
     attachInterrupt(digitalPinToInterrupt(interrupt_pin), motionISR, RISING);
-    
+
     // Read back CTRL7 for verification
     uint8_t ctrl7_read = 0;
     if (readRegister(REG_CTRL7, &ctrl7_read)) {
         if (logger != nullptr) logger->info("IMU", (String("CTRL7 readback: 0x") + String(ctrl7_read, HEX)).c_str());
     }
-    
-    if (logger != nullptr) logger->info("IMU", (String("Data Ready interrupt (INT2) on GPIO") + String(interrupt_pin)).c_str());
+
+    if (logger != nullptr) logger->info("IMU", (String("Data Ready interrupt (INT1) on GPIO") + String(interrupt_pin)).c_str());
     
     if (logger != nullptr) logger->success("IMU", "QMI8658 initialized");
     initialized = true;
@@ -191,7 +193,8 @@ bool IMU::checkWristTilt() {
     switch (state) {
         case IDLE:
             // If we see watch_up position AND had rotation in last 1.5 seconds = gesture!
-            if (watch_up && (now - last_rotation_time < 1500)) {
+            // last_rotation_time == 0 means no rotation seen yet (boot state) — skip
+            if (watch_up && last_rotation_time != 0 && (now - last_rotation_time < 1500)) {
                 state = TRIGGERED;
                 state_time = now;
                 if (logger != nullptr) logger->info("IMU_TILT", "✓ Wrist raise gesture!");
@@ -245,7 +248,8 @@ bool IMU::checkWristTiltDown() {
     switch (state) {
         case IDLE:
             // If we see arm_down position AND had rotation in last 1.5 seconds = gesture!
-            if (arm_down && (now - last_rotation_time < 1500)) {
+            // last_rotation_time == 0 means no rotation seen yet (boot state) — skip
+            if (arm_down && last_rotation_time != 0 && (now - last_rotation_time < 1500)) {
                 state = TRIGGERED;
                 state_time = now;
                 if (logger != nullptr) logger->info("IMU_TILT", "✓ Wrist lowered - sleep!");

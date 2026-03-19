@@ -36,7 +36,7 @@
 // IMU pins (I2C interface - QMI8658)
 #define IMU_SDA         I2C_SDA // Shared I2C bus
 #define IMU_SCL         I2C_SCL // Shared I2C bus
-#define IMU_INT2        21      // IMU interrupt 2 (data ready)
+#define IMU_INT1        21      // IMU interrupt 1 (data ready) — INT2 is only on test point TP15
 
 // RTC pins (I2C interface - PCF85063)
 #define RTC_SDA         I2C_SDA // Shared I2C bus
@@ -48,7 +48,7 @@
 #define PMU_SCL         I2C_SCL // Shared I2C bus
 
 // Buttons
-#define BTN_PWR         10      // Power button
+#define BTN_PWR         10      // GPIO10 = SYS_OUT per schematic — not a physical button
 #define BTN_BOOT        0       // Boot button (GPIO0)
 
 // SD card pins (SPI interface)

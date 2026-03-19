@@ -13,8 +13,9 @@ private:
     TwoWire* i2c = nullptr;
     Logger* logger = nullptr;
     bool initialized = false;
-    uint8_t interrupt_pin = 21;
+    uint8_t interrupt_pin = IMU_INT1;
     static volatile bool motion_detected;
+    static volatile uint32_t isr_count;   // increments every data-ready ISR — use to verify INT1 fires
     static void IRAM_ATTR motionISR();
     
     // Software motion detection
@@ -117,8 +118,10 @@ public:
     
     // Data ready interrupt
     bool isDataReady() { return motion_detected; }
-    void clearDataReadyFlag();    // Clears software flag AND reads STATUS0 to re-arm INT2
+    void clearDataReadyFlag();    // Clears software flag AND reads STATUS0 to re-arm INT1
     bool checkDataReadyStatus();  // Poll STATUS0 register instead of interrupt
+    uint32_t getIsrCount()  { return isr_count; }
+    void resetIsrCount()    { isr_count = 0; }
     
     // Software motion detection
     bool checkMotion();  // Returns true if significant motion detected
