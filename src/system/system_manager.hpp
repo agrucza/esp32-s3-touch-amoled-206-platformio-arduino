@@ -15,6 +15,7 @@
 #include "imu/imu.hpp"
 #include "motor/motor.hpp"
 #include "storage/sd_card.hpp"
+#include "speaker/speaker.hpp"
 
 class SystemManager {
 private:
@@ -33,6 +34,7 @@ private:
     IMU imu;
     Motor motor;
     SDCard sdCard;
+    Speaker speaker;
 
     void sleep();
     void wakeup();
@@ -46,6 +48,7 @@ public:
     IMU& getIMU() { return imu; }
     Motor& getMotor() { return motor; }
     SDCard& getSDCard() { return sdCard; }
+    Speaker& getSpeaker() { return speaker; }
     Logger* getLogger() { return logger; }
     TwoWire* getI2C() { return i2c; }
     

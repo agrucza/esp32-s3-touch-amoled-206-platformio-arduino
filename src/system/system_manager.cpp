@@ -1,7 +1,7 @@
 #include "system_manager.hpp"
 
 SystemManager::SystemManager(Logger* logger)
-    : logger(logger), pmu(logger), display(logger), touchController(logger), fsManager(logger), rtc(logger), imu(logger), motor(logger), sdCard(logger)
+    : logger(logger), pmu(logger), display(logger), touchController(logger), fsManager(logger), rtc(logger), imu(logger), motor(logger), sdCard(logger), speaker(logger)
 {
     logger->header("SystemManager Initialization");
 
@@ -89,9 +89,17 @@ SystemManager::SystemManager(Logger* logger)
     // Initialize SD Card (optional — system continues if no card present)
     sdCard.begin();
 
+    // Initialize Speaker (optional — system continues if not present)
+    speaker.begin();
+
     // Initialize Motor
     motor.begin();
     motor.doubleBuzz();  // Startup confirmation — two pulses = system ready
+
+    // Speaker startup beep (1kHz, 200ms)
+    if (speaker.isInitialized()) {
+        speaker.beep(1000, 200);
+    }
 
     logger->success("SYSTEM", "All components initialized successfully");
     logger->footer();
