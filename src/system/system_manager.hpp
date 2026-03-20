@@ -16,6 +16,7 @@
 #include "motor/motor.hpp"
 #include "storage/sd_card.hpp"
 #include "speaker/speaker.hpp"
+#include "speaker/mic.hpp"
 
 class SystemManager {
 private:
@@ -35,6 +36,7 @@ private:
     Motor motor;
     SDCard sdCard;
     Speaker speaker;
+    Mic mic;
 
     void sleep();
     void wakeup();
@@ -49,6 +51,7 @@ public:
     Motor& getMotor() { return motor; }
     SDCard& getSDCard() { return sdCard; }
     Speaker& getSpeaker() { return speaker; }
+    Mic& getMic() { return mic; }
     Logger* getLogger() { return logger; }
     TwoWire* getI2C() { return i2c; }
     

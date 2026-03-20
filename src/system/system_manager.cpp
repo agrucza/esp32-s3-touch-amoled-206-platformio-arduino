@@ -1,7 +1,7 @@
 #include "system_manager.hpp"
 
 SystemManager::SystemManager(Logger* logger)
-    : logger(logger), pmu(logger), display(logger), touchController(logger), fsManager(logger), rtc(logger), imu(logger), motor(logger), sdCard(logger), speaker(logger)
+    : logger(logger), pmu(logger), display(logger), touchController(logger), fsManager(logger), rtc(logger), imu(logger), motor(logger), sdCard(logger), speaker(logger), mic(logger)
 {
     logger->header("SystemManager Initialization");
 
@@ -98,8 +98,12 @@ SystemManager::SystemManager(Logger* logger)
 
     // Speaker startup beep (1kHz, 200ms)
     if (speaker.isInitialized()) {
+        speaker.setVolume(70);
         speaker.beep(1000, 200);
     }
+
+    // Initialize Microphone (ES7210) — shares I2S port with speaker
+    mic.begin();
 
     logger->success("SYSTEM", "All components initialized successfully");
     logger->footer();
@@ -113,9 +117,38 @@ void SystemManager::update() {
     unsigned long current_time = millis();
     unsigned long idle_time = current_time - last_activity_time;
     
-    // Simple button check
-    if (buttonPressed(BTN_BOOT)) {
-        this->sleep();
+    // Button check: short press = sleep, long press (>1s) = mic loopback test
+    if (digitalRead(BTN_BOOT) == LOW) {
+        unsigned long pressStart = millis();
+        while (digitalRead(BTN_BOOT) == LOW) delay(10);
+        if (millis() - pressStart > 1000) {
+            // Long press: loopback mic → speaker for 3 seconds
+            logger->info("MIC", "Loopback test: speak now (3s)...");
+            static int16_t buf[512];
+            // Log first batch of samples for diagnosis
+            size_t got = mic.read(buf, 512, 200);
+            if (got > 0) {
+                int32_t sum = 0;
+                int16_t peak = 0;
+                for (size_t i = 0; i < got; i++) {
+                    sum += abs(buf[i]);
+                    if (abs(buf[i]) > abs(peak)) peak = buf[i];
+                }
+                char dbg[64];
+                snprintf(dbg, sizeof(dbg), "samples=%u peak=%d avg=%d",
+                         (unsigned)got, (int)peak, (int)(sum / got));
+                logger->info("MIC", dbg);
+                speaker.play((const uint8_t*)buf, got * sizeof(int16_t));
+            }
+            unsigned long end = millis() + 2800;
+            while (millis() < end) {
+                got = mic.read(buf, 512, 50);
+                if (got > 0) speaker.play((const uint8_t*)buf, got * sizeof(int16_t));
+            }
+            logger->info("MIC", "Loopback done");
+        } else {
+            this->sleep();
+        }
         return;
     }
 
