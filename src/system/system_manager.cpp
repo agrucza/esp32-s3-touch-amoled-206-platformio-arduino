@@ -1,7 +1,7 @@
 #include "system_manager.hpp"
 
 SystemManager::SystemManager(Logger* logger)
-    : logger(logger), pmu(logger), display(logger), touchController(logger), fsManager(logger), rtc(logger), imu(logger), motor(logger), sdCard(logger), speaker(logger), mic(logger)
+    : logger(logger), pmu(logger), display(logger), touchController(logger), fsManager(logger), rtc(logger), imu(logger), motor(logger), sdCard(logger), speaker(logger), mic(logger), wifiSync(logger)
 {
     logger->header("SystemManager Initialization");
 
@@ -57,18 +57,8 @@ SystemManager::SystemManager(Logger* logger)
         return;
     }
     
-    // Set initial time for testing (2025-12-01 14:30:00)
-    RTC::DateTime testTime;
-    testTime.year = 2025;
-    testTime.month = 12;
-    testTime.day = 1;
-    testTime.hour = 14;
-    testTime.minute = 30;
-    testTime.second = 0;
-    testTime.weekday = 0; // Sunday
-    if (rtc.setDateTime(testTime)) {
-        logger->info("RTC", "Test time set: 2025-12-01 14:30:00");
-    }
+    // Sync RTC from NTP via WiFi (credentials in /wifi.txt on LittleFS)
+    wifiSync.syncTime(rtc);
 
     // Initialize IMU
     logger->info("IMU", "Initializing QMI8658...");

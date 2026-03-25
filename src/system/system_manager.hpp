@@ -17,6 +17,7 @@
 #include "storage/sd_card.hpp"
 #include "speaker/speaker.hpp"
 #include "speaker/mic.hpp"
+#include "wifi/wifi_sync.hpp"
 
 class SystemManager {
 private:
@@ -37,6 +38,7 @@ private:
     SDCard sdCard;
     Speaker speaker;
     Mic mic;
+    WiFiSync wifiSync;
 
     void sleep();
     void wakeup();
